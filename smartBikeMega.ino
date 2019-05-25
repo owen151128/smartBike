@@ -1,5 +1,4 @@
 #include <SoftwareSerial.h>
-#include <TinyGPS.h>
 
 #include <Time.h>//속도계
 //#include <LiquidCrystal.h>//LCD
@@ -16,11 +15,12 @@
 #define horn_pin 15//경적_토글복귀스위치
 #define emergency_pin 16//비상등스위치_토글 스위치
 #define magnet_pin 17//속도계_자석센서
-#define BRX_pin 3
-#define BTX_pin 2//블루투스 통신
-#define GRX_pin 30
-#define GTX_pin 31//GPS 통신
-#define GPSBAUD 9600
+#define BRX_pin 19
+#define BTX_pin 18//블루투스 통신
+#define URX_pin 30
+#define UTX_pin 31//아두이노 우노 통신
+
+
 
 //출력
 #define speaker_pin 22
@@ -33,7 +33,17 @@
 
 
 
+
+
+int flashlight = 0;//플래쉬라이트
+
+int guard = 0;//도난방지모드 설정
 int vib_data = 0;//진동변수
+
+int horn = 0;//경적
+
+
+
 
 
 //속도변수
@@ -41,7 +51,7 @@ float radius = 20; // 바퀴당 이동 거리를 확인 하기 위해 자전거 
 float circle = (2 * radius * 3.14) / 100;  // 자전거 바퀴의 둘레를 계산(단위를 m로 바꿔주기 위해 100을 나눕니다.)
 
 float bySpeed = 0; // 자전거의 속도
-float ckTime = 0;  // 리드스위치가
+float ckTime = 0;  // 리드스위치가 
 float uckTime = 0; // Unckecked
 float cycleTime = 0;  // 리드스위치가 인식이 안됬을 시간 부터 인식됬을 때까지의 시간
 float distance = 0; // 자전거의 누적 이동 거리
@@ -55,38 +65,25 @@ boolean temp = 0;  // 리드 스위치가 닫혔는지 확인하는 변수
 //LiquidCrystal lcd(12,11,5,4,3,2);   //RS 핀, E핀, 데이터 핀 4개
 
 
-//SoftwareSerial BTSerial(BTX_pin, BRX_pin);//블루투스
+SoftwareSerial BTSerial(BTX_pin, BRX_pin);//블루투스
+SoftwareSerial UNOSerial(UTX_pin, URX_pin);//블루투스
 
-
-
-
-//GPS 코드
-// Create an instance of the TinyGPS object
-TinyGPS gps;
-// Initialize the NewSoftSerial library to the pins you defined above
-SoftwareSerial uart_gps(GRX_pin, GTX_pin);
-// This is where you declare prototypes for the functions that will be
-// using the TinyGPS library.
-void getgps(TinyGPS& gps);
 
 
 void ultra();
 void vib();
+void ON(int output);
+void OFF(int output);
 
 
 
 void setup() {
 	Serial.begin(9600);
 
-	//GPS 세팅
-	/*uart_gps.begin(GPSBAUD);
-	Serial.println("");
-	Serial.println("GPS Shield QuickStart Example Sketch v12");
-	Serial.println("       ...waiting for lock...           ");
-	Serial.println("");*/
 
 	Serial.println("Hello!");
-	Serial2.begin(9600);//블루투스 통신 보드레이트 설정
+	BTSerial.begin(9600);//블루투스 통신 보드레이트 설정
+  UNOSerial.begin(9600);//아두이노 우노 통신 보드레이트 설정
 
 
 
@@ -122,20 +119,12 @@ void loop() {
 
 
 	// BT에서 받은 데이터가 있으면 데이터를 읽어서 PC로 전달
-	/*if (BTSerial.available()) {
+	if (BTSerial.available()) {
 		Serial.println(BTSerial.read());
 	}
 	// PC에서 받은 데이터가 있으면 데이터를 읽어서 BT로 전달
 	if (Serial.available()) {
 		BTSerial.write(Serial.read());
-	}*/
-
-	if (Serial2.available()) {
-		Serial.println(Serial2.read());
-	}
-	// PC에서 받은 데이터가 있으면 데이터를 읽어서 BT로 전달
-	if (Serial.available()) {
-		Serial2.write(Serial.read());
 	}
 
 
@@ -145,16 +134,40 @@ void loop() {
 
 
 
-	/* GPS 예제
+  flashlight = digitalRead(flash_pin);//플레시라이트_else
+  if(flashlight == 1) {
+    ON(light_pin);
+  } else {
+  OFF(light_pin);
+  }
 
-	while(uart_gps.available())     // While there is data on the RX pin...
-	  {
-		  int c = uart_gps.read();    // load the data into a variable...
-		  if(gps.encode(c))      // if there is a new valid sentence...
-		  {
-			getgps(gps);         // then grab the data.
-		  }
-	  }
+
+  horn = digitalRead(horn_pin);//경적_else
+  if(horn == 1) {
+    tone(speaker_pin,400);
+  } else {
+  noTone(speaker_pin);
+  }
+  
+
+
+
+  if(guard == 1) {
+  vib_data = digitalRead(vibration_pin);//도난경보시스템_미구현
+  if(vib_data == 1) {
+    for (int j=0; j<10; j++) {
+      for(int i=0; i<5; i++) {
+      tone(speaker_pin,300);
+      delay(10);//딜레이 사용
+      tone(speaker_pin,750);
+      delay(10);//딜레이 사용
+      }}
+    } else {
+  noTone(speaker_pin);
+  }
+  }
+
+
 
 
 
@@ -169,7 +182,7 @@ void loop() {
 
 
 	//속도계 예제
-	/*boolean check = digitalRead(magnet_pin); // 리드스위치의 상태를 확인합니다.
+	boolean check = digitalRead(magnet_pin); // 리드스위치의 상태를 확인합니다.
 
 	if (check == 1 && temp == 0) {  // 리드 스위치가 열릴 때(닫힘 -> 열림)
 		ckTime = millis();  // 시간을 확인해서 저장합니다.
@@ -194,9 +207,9 @@ void loop() {
 		}
 	}
 
-	/*if(digitalRead(A1) == 0){  // 버튼을 누르면 누적거리를 0으로 초기화 합니다.
-	  distance = 0;
-	}*/
+//	if(digitalRead(A1) == 0){  // 버튼을 누르면 누적거리를 0으로 초기화 합니다.
+//	  distance = 0;
+//	}
 
 
 	//LCD 값 출력
@@ -246,52 +259,10 @@ void vib() {
 
 
 
+void ON(int output) {
+  digitalWrite(output, HIGH);
+}
 
-
-// The getgps function will get and print the values we want.
-void getgps(TinyGPS & gps)
-{
-	// To get all of the data into varialbes that you can use in your code,
-	// all you need to do is define variables and query the object for the
-	// data. To see the complete list of functions see keywords.txt file in
-	// the TinyGPS and NewSoftSerial libs.
-
-	// Define the variables that will be used
-	float latitude, longitude;
-	// Then call this function
-	gps.f_get_position(&latitude, &longitude);
-	// You can now print variables latitude and longitude
-	Serial.print("Lat/Long: ");
-	Serial.print(latitude, 5);
-	Serial.print(", ");
-	Serial.println(longitude, 5);
-
-	// Same goes for date and time
-	int year;
-	byte month, day, hour, minute, second, hundredths;
-	gps.crack_datetime(&year, &month, &day, &hour, &minute, &second, &hundredths);
-	// Print data and time
-	Serial.print("Date: "); Serial.print(month, DEC); Serial.print("/");
-	Serial.print(day, DEC); Serial.print("/"); Serial.print(year);
-	Serial.print("  Time: "); Serial.print(hour, DEC); Serial.print(":");
-	Serial.print(minute, DEC); Serial.print(":"); Serial.print(second, DEC);
-	Serial.print("."); Serial.println(hundredths, DEC);
-	//Since month, day, hour, minute, second, and hundr
-
-	// Here you can print the altitude and course values directly since
-	// there is only one value for the function
-	Serial.print("Altitude (meters): "); Serial.println(gps.f_altitude());
-	// Same goes for course
-	Serial.print("Course (degrees): "); Serial.println(gps.f_course());
-	// And same goes for speed
-	Serial.print("Speed(kmph): "); Serial.println(gps.f_speed_kmph());
-	Serial.println();
-
-	// Here you can print statistics on the sentences.
-	unsigned long chars;
-	unsigned short sentences, failed_checksum;
-	gps.stats(&chars, &sentences, &failed_checksum);
-	//Serial.print("Failed Checksums: ");Serial.print(failed_checksum);
-	//Serial.println(); Serial.println();
-	delay(10000);
+void OFF(int output) {
+  digitalWrite(output, LOW);
 }
