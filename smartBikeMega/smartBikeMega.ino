@@ -1,4 +1,5 @@
 #include <SoftwareSerial.h>
+#include <LedControl.h>
 #include "DHT.h"
 #include "Timer.h" //https://playground.arduino.cc/Code/Timer/
 
@@ -34,11 +35,20 @@
 #define DIN_pin 8//도트매트릭스_LedControl
 
 
+#define current_right 2
+#define current_left 1
+#define current_em 3
+#define current_brake 4
+
 
 Timer t1;
 Timer t2;
+Timer t3;
+Timer t4;
 
 DHT dht(temp_pin, DHT11);//온습도계
+
+LedControl lc = LedControl(DIN_pin, CLK_pin, CS_pin, 4); // Pins: DIN 핀, CLK 핀, CS 핀, # 개의 화면
 
 
 int flashlight = 0;//플래쉬라이트
@@ -82,6 +92,67 @@ boolean sp_off = false; //스피커 꺼짐
 
 String data = "";
 
+int current_Led = 0;//LED 표시설정
+boolean set_Led = false;
+
+unsigned long prev_time = 0;
+unsigned long current_time = 0;
+unsigned long prevr_time = 0;
+unsigned long currentr_time = 0;
+unsigned long prevl_time = 0;
+unsigned long currentl_time = 0;
+
+boolean right_times = false;
+boolean left_times = false;
+
+
+// 배열의 값에 따라 조명의 모양이 변경됨
+byte off_Led[] =
+{
+  0, 0, 0, 0, 0, 0, 0, 0 // 꺼졌을 때 사용할 프레임
+};
+
+byte on_Led[] =
+{
+  255, 255, 255, 255, 255, 255, 255, 255 // 켜졌을 때 사용할 프레임
+};
+
+byte bar_Led[] =
+{
+  B00000000, // 화살표 마디 부분에 사용 될 프레임
+  B00000000,
+  B00000000,
+  B11111111,
+  B11111111,
+  B00000000,
+  B00000000,
+  B00000000
+};
+
+byte right_Led[] =
+{
+  B00111000, // 우측 방향지시등 화살표 지점
+  B00011100,
+  B00001110,
+  B11111111,
+  B11111111,
+  B00001110,
+  B00011100,
+  B00111000
+};
+
+byte left_Led[] =
+{
+  B00011100, // 좌측 방향지시등 화살표 지점
+  B00111000,
+  B01110000,
+  B11111111,
+  B11111111,
+  B01110000,
+  B00111000,
+  B00011100
+};
+
 
 //반드시 수정
 //LiquidCrystal lcd(12,11,5,4,3,2);   //RS 핀, E핀, 데이터 핀 4개
@@ -115,8 +186,18 @@ void setup() {
 
   dht.begin();//온습도계
 
-
-
+  lc.shutdown(0, false); // 디스플레이 시동
+  lc.shutdown(1, false);
+  lc.shutdown(2, false);
+  lc.shutdown(3, false);
+  lc.setIntensity(0, 15); // 디스플레이 밝기 조절 (0~15까지 가능)
+  lc.setIntensity(1, 15);
+  lc.setIntensity(2, 15);
+  lc.setIntensity(3, 15);
+  lc.clearDisplay(0);  // 디스플레이 초기화
+  lc.clearDisplay(1);
+  lc.clearDisplay(2);
+  lc.clearDisplay(3);
 
 	pinMode(trig_pin, OUTPUT);
 	pinMode(echo_pin, OUTPUT);//초음파센서
@@ -137,6 +218,9 @@ void setup() {
   t2.every(500, show_temp);
   t2.every(100, procedure_BT);
   t2.every(500, show_status);
+  t3.every(500, Led_On);
+  //t3.after(500, t3.every(Led_Off));
+  //t4.every(500, Led_Off);
 
 	//LCD
 	//lcd.begin(16, 2); // LCD 크기 지정, 2줄 16칸
@@ -161,33 +245,80 @@ void loop() {
 //	}
 
   brake = digitalRead(brake_pin);//브레이크
-  if(brake == 1) {
-    
-  } else {
-  
+  if(brake == 0) {   ///정상값 1입니다.
+    current_Led = current_brake;
+    t3.update();
+
   }
+
 
   left = digitalRead(left_pin);//왼쪽깜빡이
   if(left == 0) {
-    
+    left_times = true;
+    prevl_time = millis();
   } else {
-  
+      
+    if(left_times) {
+    current_Led = current_left;
+    t3.update();
+    left = 0;
+
+    currentl_time = millis();
+    if(currentl_time - prevl_time > 5001) {
+    prevl_time = currentl_time;
+    left_times = false;
+    }
+  }
   }
 
   right = digitalRead(right_pin);//오른쪽깜빡이
   if(right == 0) {
-    
+    right_times = true;
+    prevr_time = millis();
   } else {
-  
+      
+    if(right_times) {
+    current_Led = current_right;
+    t3.update();
+    right = 0;
+
+    currentr_time = millis();
+    if(currentr_time - prevr_time > 5001) {
+    prevr_time = currentr_time;
+    right_times = false;
+    }
   }
+  }
+
 
   emergency = digitalRead(emergency_pin);//비상깜빡이
   if(emergency == 0) {
-    
-  } else {
+    current_Led = current_em;
+    t3.update();
   
   }
 
+  if (set_Led == true ) { ///brake 앞에는 !붙여야함
+    Serial.println("도트 꺼짐");
+    for (int i = 0; i < 8; i++) {
+    lc.setRow(0, i, off_Led[i]);
+    lc.setRow(1, i, off_Led[i]);
+    lc.setRow(2, i, off_Led[i]);
+    lc.setRow(3, i, off_Led[i]);
+    set_Led = false;
+  }}
+  
+  if ( (brake && left && right && emergency) ) { ///brake 앞에는 !붙여야함
+    //Serial.println("도트 꺼짐 스위치");
+    for (int i = 0; i < 8; i++) {
+    lc.setRow(0, i, off_Led[i]);
+    lc.setRow(1, i, off_Led[i]);
+    lc.setRow(2, i, off_Led[i]);
+    lc.setRow(3, i, off_Led[i]);
+    set_Led = false;
+  }
+  
+  }
 
 
   flashlight = digitalRead(flash_pin);//플레시라이트_else
@@ -464,4 +595,113 @@ void show_status() {
     Serial.println("후레쉬");
   if(horn == 0)
     Serial.println("경적");
+}
+
+
+
+
+
+
+
+
+void right_Led_On()
+{
+  for (int i = 0; i < 8; i++)
+  {
+    lc.setRow(0, i, right_Led[i]);
+    lc.setRow(1, i, bar_Led[i]);
+  }
+}
+
+
+
+void left_Led_On()
+{
+  for (int i = 0; i < 8; i++)
+  {
+    lc.setRow(3, i, left_Led[i]);
+    lc.setRow(2, i, bar_Led[i]);
+  }
+}
+
+
+void all_Led_On()
+{
+  for (int i = 0; i < 8; i++)
+  {
+    lc.setRow(0, i, on_Led[i]);
+    lc.setRow(1, i, on_Led[i]);
+    lc.setRow(2, i, on_Led[i]);
+    lc.setRow(3, i, on_Led[i]);
+  }
+}
+
+
+
+void em_Led_On()
+{
+  for (int i = 0; i < 8; i++)
+  {
+    lc.setRow(0, i, on_Led[i]);
+    lc.setRow(3, i, on_Led[i]);
+  }
+}
+
+void all_Led_Off()
+{
+  for (int i = 0; i < 8; i++)
+  {
+    lc.setRow(0, i, off_Led[i]);
+    lc.setRow(1, i, off_Led[i]);
+    lc.setRow(2, i, off_Led[i]);
+    lc.setRow(3, i, off_Led[i]);
+  }
+}
+
+
+void time500() {
+    current_time = millis();
+  if(current_time - prev_time > 501) {
+    Serial.println("초기화");
+    set_Led = true;
+    prev_time = current_time;
+  }
+  }
+
+void Led_Off() {
+  set_Led = true;
+}
+
+
+void Led_On() {
+
+
+if (current_Led == current_left) {
+    for (int i = 0; i < 8; i++) {
+    lc.setRow(0, i, right_Led[i]);
+    lc.setRow(1, i, bar_Led[i]); 
+  }
+  time500();
+  } else if (current_Led == current_right) {
+    for (int i = 0; i < 8; i++) {
+    lc.setRow(3, i, left_Led[i]);
+    lc.setRow(2, i, bar_Led[i]);
+  }
+  time500();
+  } else if (current_Led == current_em) {
+    for (int i = 0; i < 8; i++) {
+    lc.setRow(0, i, on_Led[i]);
+    lc.setRow(3, i, on_Led[i]);
+  }
+  time500();
+  } else if (current_Led == current_brake) {
+    for (int i = 0; i < 8; i++) {
+    lc.setRow(0, i, on_Led[i]);
+    lc.setRow(1, i, on_Led[i]);
+    lc.setRow(2, i, on_Led[i]);
+    lc.setRow(3, i, on_Led[i]);
+  }
+  time500();
+  }
+  
 }
