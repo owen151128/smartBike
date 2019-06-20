@@ -8,6 +8,7 @@
 
 
 //입력
+#define BIT_RATE 9600
 #define trig_pin 29
 #define echo_pin 30//초음파센서
 #define vibration_pin A0//진동센서
@@ -19,8 +20,8 @@
 #define emergency_pin 23//비상등스위치_토글 스위치
 #define magnet_pin 27//속도계_자석센서
 #define temp_pin 28//온도센서
-#define BRX_pin 11
-#define BTX_pin 10//블루투스 통신
+#define BLUETOOTH_RX 11
+#define BLUETOOTH_TX 10
 //#define URX_pin 30
 //#define UTX_pin 31//아두이노 우노 통신
 
@@ -40,6 +41,14 @@
 #define current_em 3
 #define current_brake 4
 
+// 블루투스 통신 프로토콜
+
+#define REQUEST_TEMP "getTemp"
+#define RESPONSE_TEMP "temp:"
+#define REQUEST_SPEED "getSpeed"
+#define RESPONSE_SPEED "speed:";
+#define REQUEST_DEFENSE_ON "setDefense:On"
+#define REQUEST_DEFENSE_OFF "setDefense:Off"
 
 Timer t1;
 Timer t2;
@@ -158,7 +167,7 @@ byte left_Led[] =
 //LiquidCrystal lcd(12,11,5,4,3,2);   //RS 핀, E핀, 데이터 핀 4개
 
 
-SoftwareSerial BTSerial(BTX_pin, BRX_pin);//블루투스
+SoftwareSerial BTSerial(BLUETOOTH_TX, BLUETOOTH_RX);//블루투스
 //SoftwareSerial UNOSerial(UTX_pin, URX_pin);//블루투스
 
 
@@ -179,9 +188,9 @@ void show_status();
 
 
 void setup() {
-	Serial.begin(9600);
+	Serial.begin(BIT_RATE);
 	Serial.println("Hello!");
-	BTSerial.begin(9600);//블루투스 통신 보드레이트 설정
+	BTSerial.begin(BIT_RATE);//블루투스 통신 보드레이트 설정
   //UNOSerial.begin(9600);//아두이노 우노 통신 보드레이트 설정
 
   dht.begin();//온습도계
@@ -232,17 +241,6 @@ void setup() {
 
 
 void loop() {
-
-
-
-//	// BT에서 받은 데이터가 있으면 데이터를 읽어서 PC로 전달
-//	if (BTSerial.available()) {
-//		Serial.println(BTSerial.read());
-//	}
-//	// PC에서 받은 데이터가 있으면 데이터를 읽어서 BT로 전달
-//	if (Serial.available()) {
-//		BTSerial.write(Serial.read());
-//	}
 
   brake = digitalRead(brake_pin);//브레이크
   if(brake == 0) {   ///정상값 1입니다.
@@ -503,34 +501,34 @@ void show_temp() {
 void bluetoothCallback()
 {
   //Serial.println(data);
-  if(data.equals("getTemp"))
+  if(data.equals(REQUEST_TEMP))
   {
 //    Serial.println("send to Android \"temp:20\"");
-    String result = "temp:";
+    String result = RESPONSE_TEMP;
     result.concat((int)temp);
     sendAndroid(result);
 
     return;
   }
-
-  if(data.equals("getSpeed"))
+  
+  if(data.equals(REQUEST_SPEED))
   {
 //    Serial.println("send to Android \"speed:40\"");
-    String result = "speed:";
+    String result = RESPONSE_SPEED;
     result.concat((int)bySpeed);
     sendAndroid(result);
 
     return;
   }
 
-  if(data.equals("setDefanse:On"))
+  if(data.equals(REQUEST_DEFENSE_ON))
   {
     setDefanse(1);
 
     return;
   }
 
-  if(data.equals("setDefanse:Off"))
+  if(data.equals(REQUEST_DEFENSE_OFF))
   {
     setDefanse(0);
 
